@@ -1,0 +1,172 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `brfss2013`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+* * *
+
+## Part 1: Data
+
+According to the introduction from https://www.cdc.gov/brfss/, the Behavioral Risk Factor Surveillance System (BRFSS) is the nation's premier system of health-related telephone surveys that collect state data about U.S. residents regarding their health-related risk behaviors, chronic health conditions, and use of preventive services. 
+
+It can be classified as an observational study. Random sampling is attempted in the form of stratified sampling, as each state can be seen as a stratum. There could be some sampling bias in this study, for example, people who may not want to answer a phone call from a unknown number, which leads to convenience sampling; Or people with health problems do not like to share their very personal information related to their health might not be willing to proceed the phone call with the questionnaire, which leads to non-response bias. However, overall speaking, despite the possible sampling bias, the study’s results can be generalized to the whole population in U.S. 
+
+Random assignment is not employed in this study, so the results can only suggest correlation, not causation between the quantities studied.
+
+
+## Part 2: Research questions
+
+**Research question 1:** Exercise can promote physical health, it is also proven to be beneficial to people's mental health too. It would be interesting to look at how exercise helps promote overall physical and mental health of people. The involved variables are: exerany2: Exercise In Past 30 Days,physhlth: Number Of Days Physical Health Not Good and menthlth: Number Of Days Mental Health Not Good.
+
+**Research question 2:** People in different age groups may experience different types of Mental Health issues. It would be interesting to exam this claims with BRFSS data and see what is the correlation between people's age and their mental health issues if there is any. The variables involved are: _age_g: Imputed Age In Six Group, painact2: How Many Days Hard To Do Usual Activities In Past 30 Days, qlmentl2: How Many Days Depressed In Past 30 Days, qlstres2: How Many Days Felt Anxious In Past 30 Days
+
+**Research question 3:** This administration is going to work on Health Care reform, and unfortunately there are analysis showing a potion of people who are currently on Medicaid or similar programs are going to lose health care based on the existing bills. It might be important to find out which states have the higher ratio of Medicaid receiver and thus could be hit the most by the possible reduction of an overall Medicaid funding from the Federal Government. The variables involved are: _state: State Fips Code, hlthpln1: Have Any Health Care Coverage, and hlthcvrg: Health Insurance Coverage.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+
+**Research quesion 1:**
+
+First of all, relevant variables are selected from the complete brfss data set, and answers containing NA are filtered out. 
+```{r}
+exer_phy_mental <- brfss2013 %>%
+select(exerany2, physhlth, menthlth)
+
+exer_phy_mental <- exer_phy_mental %>%
+filter(!is.na(exerany2), !is.na(physhlth),!is.na(menthlth))
+```
+
+If we group the data by whether people participated in exercise at all during the past 30 days, mean of days when they feel that their physical health or mental health is not good can be calculated easily with summarize function. 
+```{r}
+exer_phy_mental %>%
+group_by(exerany2) %>%
+summarise(mean_phy = mean(physhlth),mean_men= mean(menthlth))
+
+```
+As can be seen from the result table, when people exercise, the average days they feel physically or mentally uncomfortable are roughly 3 and 3 days respectively; whereas for the people who has not been exercising, the physically and mentally uncomfortable days are 7 and 5 days respectively, more than the people who exercise. 
+
+Further more, we want to define whether a person is healthy.  We can arbitrarily say if a person does not feel good for less than 5 days in the past 30 days, he or she is considered relatively health with some ups and downs in life. However,if a person does not feel good more than 5 days in the past 30 days, he or she might be unhealthy and is encouraged to consult with a physician. 
+
+We can then plot the physically healthy and unhealthy ratios of the people and compare between the group who exercise and those who do not. 
+```{r}
+exer_phy_mental <- exer_phy_mental %>%
+mutate(phy_type = ifelse(physhlth < 5, "healthy", "unhealthy"), men_type = ifelse(menthlth < 5, "healthy", "unhealthy"))
+
+ggplot(data = exer_phy_mental, aes(x = exerany2, fill = phy_type))+
+geom_bar(position= "fill")
+
+```
+
+As can be seen the physically unhealthy ratio is around 16% among those who exercise, and around 32% for the not exercising group, roughly twice than that of the group exercise.
+
+The same plot can be made with mental health. 
+```{r}
+ggplot(data = exer_phy_mental, aes(x = exerany2, fill = men_type))+
+geom_bar(position= "fill")
+
+```
+
+Although the difference is not that big, it is still very clear that those who exercise enjoy healthier mental states in general. 
+
+In conclusion, exercise correlates to overall better physicial health as well as mental health. It might be more beneficial for the physical health improvement. 
+
+
+**Research quesion 2:**
+
+We would like to use age_g: Imputed Age In Six Groups, but the name in the brfss2013 data set is changed. Through the grep function, the name of this variable is found to be X_age_g. 
+```{r}
+grep("age_g", names(brfss2013), value = TRUE)
+```
+Similar to Question 1, relevant variables are selected from the complete brfss data set, and answers containing NA are filtered out. Essentially we are looking at answers from people who responded Optional Module 3 - Healthy Days (Symptoms) completely.
+
+```{r}
+age_mental <- brfss2013 %>%
+select(X_age_g,painact2, qlmentl2,qlstres2)
+
+age_mental <- age_mental %>%
+filter(!is.na(X_age_g), !is.na(painact2),!is.na(qlmentl2),!is.na(qlstres2))
+```
+
+Then we can calculate the means of days people feel different types of mental unhealthiness grouped by their age.
+```{r}
+age_mental %>%
+group_by(X_age_g) %>%
+summarise(mean_hard = mean(painact2), mean_dep= mean(qlmentl2), mean_str=mean(qlstres2))
+```
+
+The means can be plotted as:
+```{r}
+ggplot(age_mental, aes(x=factor(X_age_g), y=painact2)) + stat_summary(fun.y="mean", geom="bar")
+ggplot(age_mental, aes(x=factor(X_age_g), y=qlmentl2)) + stat_summary(fun.y="mean", geom="bar")
+ggplot(age_mental, aes(x=factor(X_age_g), y=qlstres2)) + stat_summary(fun.y="mean", geom="bar")
+```
+
+My intention really was to plot the three means as side by side bars on one plot, but after spending hours researching this, I still was not able to. Anyway, the three separate plot can tell us something about mental health issues with regards to age:
+
+* People age from 45-54 are troubled by mental health issues the most. In other words, when young adults grow older, they will likely to experience more and more mental problems until they reached around age 50, then their mental health issues relieves with age after that. 
+* Stress is the most prevalent mental health problem among all age groups. 
+* Younger generation: 18-34 age groups are less susceptible to the emotion of “Hard To Do Usual Activities” than older generations.
+
+**Research quesion 3:**
+
+We first select useful variables from the brfss2013 data set, with individual coverage information.   
+```{r}
+coverage <- brfss2013 %>%
+select(X_state, hlthpln1, hlthcvrg) 
+
+```
+
+Then filter function is used to only analyse people with health care coverage, and further categorize them into to groups: those depend on Medicaid and similar programs only (hlthcvrg value contains 4), and those who have other means (hlthcvrg value does not contain 4).
+
+It is also possible to calculate each states has how many people that depend only on Medicaid as their health care coverage. 
+
+```{r}
+  coverage <- coverage %>%
+  filter (hlthpln1 =="Yes")%>%
+  mutate(medicaid_only = hlthcvrg %in% c("4", "04")) 
+  
+  coverage %>%
+  group_by(X_state) %>%
+  count(medicaid_only)
+```
+
+It is useful to plot, but if we do now, the states names are too long, and even if we zoom in, it is very hard to see, so states abbreviation is needed. 
+
+```{r}
+  coverage<-coverage %>% 
+mutate(state_abb = ifelse(X_state == "District of Columbia", "DC", ifelse(X_state== "Puerto Rico", "PR", ifelse(X_state == "Guam", "GM", state.abb[match(X_state,state.name)]))))
+
+```
+
+Then we can make the plot.
+```{r}
+ggplot(data = coverage, aes(x = state_abb, fill = medicaid_only)) +
+geom_bar(position="fill")
+```
+
+As can be seen, Puerto Rico, Tennesse and Massachusetts will be the states or areas that will be hit the most if the funding of these states' Medicaid programs reduces, as these states and areas has the largest percentage of residence using the Medicaid as the only Health insurance plan.
