@@ -1,0 +1,179 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+According to General Social Survey (GSS)'s 2016 Report on NORC's website, it is a personal-interview survey designed to monitor changes in both social characteristics and attitudes currently being conducted in the United States. The GSS sample is drawn using an area probability design. Using NORC’s sample frame of United States addresses, a mix of urban, suburban, and rural National Frame Areas (NFAs) are scientifically selected to represent the nation. 
+
+* Generalizability – Random sampling is used as NORC tries to selected addresses represent the nation. In the 2016 Report, it is stated that beginning in 2004, the GSS began to use a two-stage subsampling design for nonresponse, which means that nonresponse is a source of sampling bias in the survey, and NORC is taking measures to make it more generalizable to the whole population in the U.S. Overall speaking, the results can be generalized. 
+
+* Causality – Random assignment is not used, as it is a interview survey. So the results can only suggest correlation, not causation between the quantities studied.
+
+* * *
+
+## Part 2: Research question
+
+**Question 1:** Race plays a very important role in the U.S. in any social and political issue, among these issues, education and education opportunity is an especially sensitive one. It would be interesting to find out whether the sample data shows if white and non-white respondents have any difference in their education level throughout 1972-2012. The involved variables are race: Race of respondent and degree: RS highest degree.
+
+**Question 2:** Based on the gss data set, can we say there is a statistically significant difference of education level of all white and all non-white American population, and how big the difference is? 
+
+**Question 3:** Following the first two questions, the third question further explores the change regarding education and education opportunity among white and non-white respondent from the 70s to 21st century.  It would be interesting to find out whether the data suggests that the proportion of the white and non-white respondents who earned college or higher degree has changed significantly through the years. The involved variables are race: Race of respondent, degree: RS highest degree and year: GSS year for this respondent. 
+
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+**Question 1 and 2:**
+
+Relevant variables are selected from the complete gss data set, and answers containing NA are filtered out. To be able to compare white and non white race, a new variable is introduced to combine black and other races. 
+```{r}
+race_edu <- gss %>%
+select(year, race, degree) %>%
+filter(!is.na(year), !is.na(race),!is.na(degree)) %>%
+mutate(tworaces = ifelse(race == "White", "white", "non-white"))
+```
+
+Since proportion is what interests us, "success" needs to be defined, it is here defined as to have completed associate degree (junior college), bachelor or graduate.
+```{r}
+race_edu <- race_edu %>%
+  mutate(success = degree %in% c("Bachelor", "Junior College", "Graduate")) 
+```
+
+Different races and their "success" can be investigated and graphed. 
+```{r}
+ggplot(data = race_edu, aes(x = tworaces, fill = success))+
+geom_bar(position= "fill")
+```
+
+We can see that less than 25% of non-white respondents has achieved junior college or higher degrees while a little over 25% of white respondents has achieved junior college or higher degrees. We can also calculate the exact ratios as well as the overall ratio of all respondents. 
+
+```{r}
+race_edu %>%
+  summarise(pool_edu_ratio = sum(success == "TRUE") / n())
+
+race_edu %>%
+  group_by(tworaces)%>%
+  summarise(edu_ratio = sum(success == "TRUE") / n())
+
+```
+
+It can be seen that in the sample data set, overall 26.66% people finished junior college and above through out 1972 to 2012. This ratio is 27.94% in white respondents and 21.06% in non-white respondents.
+
+
+**Question 3:**
+
+First we can take a look at the respondents' receiving junior college, bachelor or graduate degrees change during the 40 years in general. The overall respondents' education count is plotted.
+
+```{r}
+ggplot(race_edu,aes(x = year, color = success)) + 
+     geom_line(stat = 'count')
+```
+
+There seems to be an overall increase of TRUE number, but it would be more relevant to plot the ratio, so interview data from 1972, 1994 and 2012 was selected as they are roughly 20 years apart, and bar chart with ratio is plotted. 
+
+```{r}
+
+year_race_edu <- race_edu %>%
+filter(year =="1972"|year== "1994"|year== "2012")
+
+year_race_edu %>%
+group_by(year)%>%
+  summarise(edu_ratio = sum(success == "TRUE") / n())
+
+ggplot(year_race_edu) + aes(x=year, fill = success) + geom_bar(position= "fill") + labs(fill = "Finished junior college or higher") + ggtitle("Overall higher education number count")
+
+```
+
+As can be seen, the overall ratio of respondent receiving junior college or higher degree in creased dramatically in the first 20 years from 12.5% in 1972 to 30.1% in 1994, then it increase slightly from 1994 to 36.1% in 2012. 
+
+We can also investigate the difference between white and non-white races and their ratios of respondent receiving junior college or higher degree, respectively
+```{r}
+year_race_edu %>%
+  group_by(year, tworaces)%>%
+  summarise(edu_ratio = sum(success == "TRUE") / n())
+
+ggplot() + geom_bar(data = year_race_edu, aes(x=year, fill = success), position= "fill") + facet_grid(.~tworaces) + ggtitle("Ratio of high education change in White & Non-White Respondents") + labs(fill = "Finished junior college or higher")
+```
+
+As shown from the statistics and the plots, both races' ratios changes followed the combined ratio change trend, which jumped significantly from 1972 to 1994, and increased a little more from 1994 to 2012.  More over, the increases for the non-white race is larger for both period of time. From 1972 to 1994, the ratio increased from 3.7% to 22.9%, more than six times. It might be related to the civil rights movements in 60-70s.  
+
+The gss data also shows that the non-white respondents' higher education level in 2012 30.3% is still not up to the level of white respondents' level in 1994, 31.6%.  
+
+* * *
+
+## Part 4: Inference
+
+**Question 2:**
+
+To inference, we can check the CLT conditions first: 
+
+1. The observations in the sample are in fact independent within and between groups, as the gss did use random sampling and only one adult from one household is interviewed, as well as the fact we expect the respondents are less than 10% of all the white and non-white population in the U.S..
+
+2. We can check if the sample size is sufficiently large by calculating and double check the success/failure condition: np≥10 and n(1−p)≥10. As shown below, both the white and non-white sample sizes are large enough. 
+
+```{r}
+race_edu %>%
+  group_by(tworaces) %>%
+  count(success)
+```
+
+Since the CLT applies, the distribution of the sample proportions will be nearly normal, centered at the true population proportions of the white and non-white success proportions. We can do both hypothesis test and confidence interval. 
+
+* Method 1: Hypothesis test
+
+Our null hypothesis is that there is no difference between the proportion of all white and all non-white Americans who received Junior College degree or higher as their highest degree throughout 1972 to 2012, which is H0: p_white =  p_non-white. And the alternative hypothesis is that there is a difference between the proportion of all white and all non-white Americans who received Junior College degree or higher as their highest degree throughout 1972 to 2012, which is HA: p_white != p_non-white. 
+
+
+```{r}
+race_edu %>%
+inference(y =success, x = tworaces, data = race_edu, statistic = "proportion", type = "ht", null = 0, alternative = "twosided", method = "theoretical", success = "TRUE")
+
+```
+
+As the r result and figure shows, the p value is smaller than 0.0001, which means we should reject the null hypothesis that there is no difference between the proportion of all white and all non-white Americans who received Junior College degree or higher as their highest degree throughout 1972 to 2012,
+
+* Method 2: Confidence interval
+
+The parameter of interest is the difference between the proportion of all white and all non-white Americans who received Junior College degree or higher as their highest degree throughout 1972 to 2012: p_white -  p_non-white. While the point estimate is difference between the proportion of gss sampled white and gss sampled non-white Americans who received Junior College degree or higher as their highest degree: p_hat_white - p_hat_non-white. 
+
+Using r, we can calculate the confidence interval: p_hat_white - p_hat_non-white +- z*SE_p_hat_white - p_hat_non-white can be calculated. 
+
+```{r}
+race_edu %>%
+inference(y =success, x = tworaces, data = race_edu, statistic = "proportion", type = "ci", method = "theoretical", success = "TRUE")
+
+```
+
+We are 95% confident that the difference between the proportion of all white and all non-white Americans who received Junior College degree or higher as their highest degree throughout 1972 to 2012 is between 0.0599 and 0.0776.  
+
+We can also see here, since we rejected null hypothesis in the Method 1 Hypothesis testing, 0 is not in the 95% confidence interval, which is expected. 
+
+
