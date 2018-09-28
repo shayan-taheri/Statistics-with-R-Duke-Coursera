@@ -1,0 +1,42 @@
+---
+title: "crime and punishment course"
+output: html_document
+---
+
+```{r}
+library(devtools)
+library(statsr)
+library(dplyr)
+library(ggplot2)
+library(BAS)
+library(MASS)
+
+data(UScrime)
+UScrime
+```
+
+```{r}
+UScrime[,-2]=log(UScrime[,-2])
+crime.ZS= bas.lm(y~., data=UScrime, prior = "ZS-null", modelprior = uniform(),method= "MCMC")
+diagnostics(crime.ZS)
+plot(crime.ZS,which=1,add.smooth = F)
+plot(crime.ZS,which=2,add.smooth = F)
+plot(crime.ZS,which=3,add.smooth = F)
+plot(crime.ZS,which=4)
+image(crime.ZS, rotate=F)
+```
+
+
+```{r}
+coef.ZS=coef(crime.ZS)
+plot(coef.ZS,subset=5:6)
+
+predict(crime.ZS,estimator = "BPM")
+```
+
+
+
+```{r}
+predict(crime.ZS,estimator = "BPM")
+```
+

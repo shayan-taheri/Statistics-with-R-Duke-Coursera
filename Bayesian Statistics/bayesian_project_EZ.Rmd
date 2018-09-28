@@ -1,0 +1,250 @@
+---
+title: "Bayesian modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(BAS)
+
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+
+This part is the same as Course 3 project, according to the Codebook for Movies data set, the data set is comprised of 651 randomly sampled movies produced and released before 2016. 
+
+* Generalizability – Random sampling is used, so the results should be generalizable to all the movies. However there is no information about language or country in the data set, so if the 651 movies are all English language or English dubbed movies, it would be more precise to say that the results should be generalizable to all the English language or English dubbed movies. 
+
+* Causality – Random assignment is not used, so the results can only suggest correlation, not causation between the quantities studied.
+
+* * *
+
+## Part 2: Data manipulation
+
+Removing rows containing NA values, we will do manipulation as required in the project information to assist modeling. 
+```{r}
+movies_comp <- movies[-c(which(!complete.cases(movies))),,drop=F] %>%
+  mutate(feature_film = ifelse(title_type == "Feature Film", "yes", "no"), drama = ifelse(genre=="Drama","yes","no"), mpaa_rating_R = ifelse(mpaa_rating == "R", "yes","no"), oscar_season = ifelse(thtr_rel_month >=10,"yes","no"), summer_season = ifelse(thtr_rel_month >=5 & thtr_rel_month <=8 ,"yes","no"))
+  
+```
+
+```{r}
+movies_bayesian <- movies_comp %>%
+   dplyr::select(feature_film, drama, runtime, mpaa_rating_R, thtr_rel_year, oscar_season, summer_season, imdb_rating, imdb_num_votes, critics_score, audience_score, best_pic_nom, best_pic_win, best_actor_win, best_actress_win, best_dir_win, top200_box)
+
+```
+
+As can be seen, the new variables are title_type: movie is feature film or not; drama: movie genre is drama or not; mpaa_rating_R: rating is R or not; oscar_season: movie is released in November, October, or December or not; as well as summer_season: movie is released in May, June, July, or August or not.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+* Audience_score's relationship with feature_film
+
+```{r}
+movies_bayesian %>%
+  group_by(feature_film)%>%
+  summarise(count= n(), mean_score = mean(audience_score))
+ 
+ggplot(movies_bayesian, aes(x = factor(feature_film), y = audience_score)) +
+  geom_boxplot()+
+  labs(x = "Movie is a feature film", y="Audience score")+
+  ggtitle("Audience score of a movie vs title type")
+```
+
+As shown from the summary statistics and plot, there is much more feature films than non feature films, the former averagely have lower audience score than the latter, and much larger variance. 
+
+* Audience_score's relationship with drama
+
+```{r}
+movies_bayesian %>%
+  group_by(drama)%>%
+  summarise(count= n(), mean_score = mean(audience_score))
+ 
+ggplot(movies_bayesian, aes(x = factor(drama), y = audience_score)) +
+  geom_boxplot()+
+  labs(x = "Movie is a drama", y="Audience score")+
+  ggtitle("Audience score of a movie vs type of feature film")
+```
+
+Drama is a major part of feature films, 298 drama total out of 573 feature films. As shown from the summary statistics and plot, drama outperform non-drama movies, which includes the 46 non-feature films in audience score. 
+
+* Audience_score's relationship with mpaa_rating
+
+```{r}
+movies_bayesian %>%
+  group_by(mpaa_rating_R)%>%
+  summarise(count= n(), mean_score = mean(audience_score))
+ 
+ggplot(movies_bayesian, aes(x = factor(mpaa_rating_R), y = audience_score)) +
+  geom_boxplot()+
+  labs(x = "Movie is rated R", y="Audience score")+
+  ggtitle("Audience score of a movie vs rating of the movie")
+```
+
+There is about equal number of R movies as non R movies in this data set, and it does not seen to affect audience sore too much. 
+
+* Audience_score's relationship with oscar_season
+
+```{r}
+movies_bayesian %>%
+  group_by(oscar_season)%>%
+  summarise(count= n(), mean_score = mean(audience_score))
+ 
+ggplot(movies_bayesian, aes(x = factor(oscar_season), y = audience_score)) +
+  geom_boxplot()+
+  labs(x = "Movie is released in oscar season", y="Audience score")+
+  ggtitle("Audience score of a movie vs release in oscar season ")
+```
+
+It can be seen that movies released in the oscar seasons are indeed slightly more liked by the audience than movies that are not. 
+
+* Audience_score's relationship with summer_season
+
+```{r}
+movies_bayesian %>%
+  group_by(summer_season)%>%
+  summarise(count= n(), mean_score = mean(audience_score))
+ 
+ggplot(movies_bayesian, aes(x = factor(summer_season), y = audience_score)) +
+  geom_boxplot()+
+  labs(x = "Movie is released in summer season", y="Audience score")+
+  ggtitle("Audience score of a movie vs release in summer season ")
+```
+
+It can be seen that movies released in the summer seasons does not impact audience score too much either. 
+
+* * *
+## Part 4: Modeling
+
+* Model Selection
+
+There are 16 parameters, and the model selection is performed using Markov chain Monte Carlo (MCMC) method. We will try to minimize BIC, which will penalize the number of parameters in proportion to the sample size. Also equal probability is given to all models prior.
+
+```{r}
+movies_bic = bas.lm(audience_score ~., data=movies_bayesian, prior = "BIC", modelprior = uniform(), method= "MCMC")
+summary(movies_bic)
+```
+
+
+* Model diagnostics
+
+```{r}
+diagnostics(movies_bic)
+```
+
+As shown in the able charts, the y axis posterior inclusion probability pip (MCMC) and x axis pip (renormalized) are in close agreement, which means MCMC is a proper method here. 
+
+```{r}
+plot(movies_bic,which=1,add.smooth = F)
+```
+
+Most residuals are randomly scattered around 0, there seems to be a few outliers at the upper left corner.
+
+```{r}
+plot(movies_bic,which=2,add.smooth = F)
+```
+
+We can see that there are over 4000 models being evaluated, and their cumulative probability is approaching 1.
+
+```{r}
+plot(movies_bic,which=3,add.smooth = F)
+```
+
+This shows that the models that have the highest Bayes factors may have 2 or 3 predictors.
+
+```{r}
+plot(movies_bic,which=4)
+```
+
+The above figure shows that runtime, imdb_rating and critics_score are more significant predictors than the others. However, admittedly, imdb_rating and critics_score are very likely colinear. 
+
+* Interpretation of Final model coefficients
+
+Model 1 includes runtime, imdb_rating and critics_score as predictors, which is our final model based on BIC method. 
+
+```{r}
+movies_model_1 = lm(audience_score ~ runtime+ imdb_rating + critics_score , data=movies_bayesian)
+summary(movies_model_1)
+```
+
+With every minute increase of runtime, the audience score is expected decrease by 0.058. With every 1 point of increase in imdb_rating, the audience score is expected to increase by 14.95. With every point of critics score increase, the audience score is expected increase by 0.07531. 
+
+* Model diagnostics on Final model
+
+linear relationship between each (numerical) explanatory variable and the response variable.
+
+```{r}
+plot(movies_model_1$residuals ~ movies_bayesian$runtime)
+plot(movies_model_1$residuals ~ movies_bayesian$critics_score)
+plot(movies_model_1$residuals ~ movies_bayesian$imdb_rating)
+```
+
+They are in fact random scatter around 0. 
+
+We can also check nearly normal residuals with mean 0 by: 
+```{r}
+hist(movies_model_1$residuals)
+qqnorm(movies_model_1$residuals)
+qqline(movies_model_1$residuals)
+```
+
+Near normal is reasonably satisfied. 
+
+Finally we can check constant variability of residuals by:
+```{r}
+plot(movies_model_1$residuals ~ movies_model_1$fitted)
+plot(abs(movies_model_1$residuals) ~movies_model_1$fitted)
+```
+
+The variability around low score is indeed larger, but the condition seems to be met.
+
+
+* * *
+
+## Part 5: Prediction
+
+Manchester by the Sea is my favorite movie last year, and we can predict the IMDb rating using the model. The Rotten Tomato and IMDb pages are: https://www.rottentomatoes.com/m/Manchester_by_the_sea/
+
+http://www.IMDb.com/title/tt4034228/awards?ref_=tt_awd
+
+```{r}
+new_movie <- data.frame(runtime = 135, imdb_rating=7.9, critics_score = 95)
+predict(movies_model_1, new_movie,interval = "prediction", level = 0.95)
+```
+The model predicts the audience score of Manchester by the Sea to have 84% on Rotten tomato. The model also predicts, with 95% confidence, that this movie is expected to have an audience score between 65 to 105. In fact, it can not exceeds 100.  The actual audience score is 77% on Rotten tomato. 
+
+* * *
+
+## Part 6: Conclusion
+
+There are some observations and shortcomings
+
+* In EDA, we learned that movies released in oscar seasons do not seem to have significantly higher score than others. It is quite surprising as they usually are geared up to winning awards. 
+
+* Using BAS and MCMC to select a model with the lowest BIC does not sufficiently take care of the collinearity issue. All the best models included both imdb_rating and critics_score, which are very likely collinear parameters. 
+
+* In EDA, we saw very significant difference between feature movies and non feature movies, however this predictor is not included in the lowest BIC Bayesian regression model. 
+
+* Without a limit, the model can extrapolate to impossible number such as the upper limit in the prediction part as demonstrated.
+
+
