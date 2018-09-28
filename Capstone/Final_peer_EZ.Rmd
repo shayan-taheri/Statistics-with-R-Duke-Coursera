@@ -1,0 +1,521 @@
+---
+title: "Peer Assessment II"
+output:
+  html_document: 
+    pandoc_args: [
+      "--number-sections",
+    ]
+---
+
+# Background
+
+As a statistical consultant working for a real estate investment firm, your task is to develop a model to predict the selling price of a given home in Ames, Iowa. Your employer hopes to use this information to help assess whether the asking price of a house is higher or lower than the true value of the house. If the home is undervalued, it may be a good investment for the firm.
+
+# Training Data and relevant packages
+
+In order to better assess the quality of the model you will produce, the data have been randomly divided into three separate pieces: a training data set, a testing data set, and a validation data set. For now we will load the training data set, the others will be loaded and used later.
+
+```{r load, message = FALSE}
+load("ames_train.Rdata")
+```
+
+Use the code block below to load any necessary packages
+
+```{r packages, message = FALSE}
+library(statsr)
+library(dplyr)
+library(BAS)
+library(ggplot2)
+library(gridExtra)
+```
+
+## Part 1 - Exploratory Data Analysis (EDA)
+
+When you first get your data, it's very tempting to immediately begin fitting models and assessing how they perform.  However, before you begin modeling, it's absolutely essential to explore the structure of the data and the relationships between the variables in the data set.
+
+Do a detailed EDA of the ames_train data set, to learn about the structure of the data and the relationships between the variables in the data set (refer to Introduction to Probability and Data, Week 2, for a reminder about EDA if needed). Your EDA should involve creating and reviewing many plots/graphs and considering the patterns and relationships you see. 
+
+After you have explored completely, submit the three graphs/plots that you found most informative during your EDA process, and briefly explain what you learned from each (why you found each informative).
+
+* * *
+**Plot 1**
+
+Since we are modeling price, we need to know the distribution of house price first. 
+```{r}
+ames_train_w8 <- ames_train %>%
+mutate(price_log=log(price))
+
+p1 <- ggplot(data = ames_train_w8, aes(x = price)) +
+  geom_histogram() +
+  labs(title ="Ames House Price Distribution", x = "Price of the House", y = "Number of Houses")
+
+p2 <- ggplot(data = ames_train_w8, aes(x = price_log)) +
+  geom_histogram() +
+  labs(title ="Ames House Log Price Distribution", x = "Log Price of the House", y = "Number of Houses")
+
+grid.arrange(p1, p2, ncol =2)
+
+```
+
+Price of the house is approximately normally distributed, and right skewed. However, when price is log transformed, the right skewness is hugely improved and the distribution is much more centered. 
+
+
+**Plot 2**
+
+From previous exercise, we learned that using scatter plot, overall quality is one of the best single predictors of price. It is necessary to see if it is the same when we want to predict the natural log of the home prices. 
+
+```{r creategraphs}
+p3 <- ggplot(data = ames_train_w8, aes(x = Overall.Qual, y = price)) +
+  geom_jitter() +
+  labs(x = "Overall Quality of Houses", y= "Price of Houses")
+
+p4 <- ggplot(data = ames_train_w8, aes(x = Overall.Qual, y = price_log)) +
+  geom_jitter() +
+  labs(x = "Overall Quality of Houses", y= "Log Price of Houses")
+
+grid.arrange(p3, p4, ncol =2)
+```
+
+As can be seen, overall quality is one of the best single predictors of price. Also when we log-transform price, it makes the relationship appear to be more linear. 
+
+
+**Plot 3**
+
+Another important exploratory data analysis we did is to understand how location or neighborhood impact price of the houses. 
+```{r}
+p5 <- ggplot(ames_train_w8, aes(x = factor(Neighborhood), y = price)) +
+  geom_boxplot() +
+  labs(x = "Neightborhood", y= "Price of Houses") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+p6 <- ggplot(ames_train_w8, aes(x = factor(Neighborhood), y = price_log)) +
+  geom_boxplot() +
+  labs(x = "Neightborhood", y= "Log Price of Houses") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+grid.arrange(p5, p6, ncol =2)
+```
+
+As shown above, the most expensive neighborhood is Stone Brook, while the least expensive neighborhood is Meadow Village. Neighborhood factor is so significant that it must be considered as a variable in the model. 
+
+* * *
+
+## Part 2 - Development and assessment of an initial model, following a semi-guided process of analysis
+
+### Section 2.1 An Initial Model
+In building a model, it is often useful to start by creating a simple, intuitive initial model based on the results of the exploratory data analysis. (Note: The goal at this stage is **not** to identify the "best" possible model but rather to choose a reasonable and understandable starting point. Later you will expand and revise this model to create your final model.
+
+Based on your EDA, select *at most* 10 predictor variables from “ames_train” and create a linear model for `price` (or a transformed version of price) using those variables. Provide the *R code* and the *summary output table* for your model, a *brief justification* for the variables you have chosen, and a *brief discussion* of the model results in context (focused on the variables that appear to be important predictors and how they relate to sales price).
+
+* * *
+
+**R code and summary**
+
+Based on the EDA I performed, the variables chosen are: area (log transformed), Lot.Area (log transformed), Neighborhood, Bldg.Type, Overall.Qual, Overall.Cond, Year.Built, Bsmt.Qual, Bedroom.AbvGr, Sale.Condition and the model for log transformed price developed is:
+
+```{r fit_model}
+ames_train_w8 <- ames_train_w8 %>%
+  mutate(area_log=log(area), Lot.Area_log= log(Lot.Area))
+
+ini_model = lm(price_log ~ area_log + Lot.Area_log + Neighborhood + Bldg.Type + Overall.Qual + Overall.Cond + Year.Built + Bsmt.Qual + Bedroom.AbvGr + Sale.Condition, data = ames_train_w8)
+
+summary(ini_model)
+
+```
+
+**Justification for the variables**
+
+* From week 1's EDA, using scatter plots, we found that **Lot.Area_log**, **Overall.Qual**, **Year.Built** and **Bedroom.AbvGr** are all somewhat linearly related to price. 
+* **Area** seems to be related to lot area. However, I found that these two variables are less collinear than their names appear, as shown below. So adding both variables to the model would add value to the model. 
+* **Neighborhood**, **Bldg.Type** and **Sale.Condition** are all chosen because they are categorical variables that is important for property buyer to determine ahead of time, thus they might impact price significantly. Also we already learn from EDA, neighborhood and sale condition are influential.
+* Finally, **Bsmt.Qual** and **Bedroom.AbvGr** are index to measure how much useful area is in the home under and above ground. So they are chosen in this initial model. 
+
+```{r}
+ames_train_w8 %>%
+  summarise(cor(area, Lot.Area))
+```
+
+**Brief discussion**
+
+* Adjusted R squared of the initial model is 0.8845
+* All variables chosen in the initial model seems to be relevant with p < 0.05. 
+* Some important predictors are area_log (with everthing else held constant, every unit increase would increase log price by 0.53), Lot.Area_log (with everthing else held constant, every unit increase would increase log price by 0.11), Neighborhood (with everthing else held constant, the houses located in Iowa DOT and Rail Road would decrease log price by 0.21 compared to the houses located in Bloomington Heights), Overall.Qual (with everthing else held constant, every unit increase would increase log price by 0.07), Overall.Cond (with everthing else held constant, every unit increase would increase log price by 0.07), Year.Built (with everthing else held constant, every unit increase would increase log price by 0.004) and Bedroom.AbvGr (with everthing else held constant, every unit increase would decrease log price by 0.04). 
+
+* * *
+
+### Section 2.2 Model Selection
+
+Now either using `BAS` another stepwise selection procedure choose the "best" model you can, using your initial model as your starting point. Try at least two different model selection methods and compare their results. Do they both arrive at the same model or do they disagree? What do you think this means?
+
+* * *
+
+**Stepwise variable selection using BIC**
+
+Below is stepwise BIC variable selection with summary: 
+
+```{r model_select}
+library(MASS)
+ames_train_w8_bic = stepAIC(ini_model,data = ames_train_w8, direction="backward", k=log(nrow(ames_train_w8)))
+
+summary(ames_train_w8_bic)
+```
+
+**Variable selection using BMA**
+
+The second method used is Bayesian Model Averaging.
+
+```{r}
+ames_train_w8_bma = bas.lm(ini_model, data = ames_train_w8, prior = "BIC", modelprior = uniform(), method= "MCMC")
+summary(ames_train_w8_bma)
+```
+
+Using stepwise BIC and BMA with BIC as prior, I arrived at different model.  
+
+Stepwise BIC selects the one with the minimum BIC -3602.27. by adding a penalty proportional to the log of the sample size for each variable is added to it discourage overtting, thus the model only has 8 variables (Adjusted R square 0.8665).  However, Bayesian Model Averaging choses a model with all variables with marginal posterior inclusion probabilities greater than 0.5, thus it included **Neighborhood** and **Bldg.Type** as part of the categories have posterior probablities larger than 0.5. BMA included all 10 variables, which is our initial model with Adjusted R square equals 0.8845. 
+
+* * *
+
+### Section 2.3 Initial Model Residuals
+One way to assess the performance of a model is to examine the model's residuals. In the space below, create a residual plot for your preferred model from above and use it to assess whether your model appears to fit the data well. Comment on any interesting structure in the residual plot (trend, outliers, etc.) and briefly discuss potential implications it may have for your model and inference / prediction you might produce.
+
+* * *
+Choosing the initial model using BMA, which included all variables, we have three residual plots as shown below: 
+
+```{r model_resid}
+ggplot(data = ini_model , aes(x = .resid)) +
+  geom_histogram() +
+  xlab("Residuals")
+
+ggplot(data = ini_model, aes(sample = .resid)) +
+  stat_qq()
+
+ggplot(data = ini_model, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  xlab("Fitted values") +
+  ylab("Residuals")
+```
+
+* There seems to be nearly normal , fairly symmetric residuals, despite small number of outliers rendering the residual plot left skewed.
+* QQ quantile-quantile also shows a lower tail. Otherwise it can be considered normally distributed.
+* The residuals plot shows a random scatter, which proves linear association.
+* Constant variance of residuals is met, there seems to be no fan shape in residuals plot.
+
+* * *
+
+### Section 2.4 Initial Model RMSE
+
+You can calculate it directly based on the model output. Be specific about the units of your RMSE (depending on whether you transformed your response variable). The value you report will be more meaningful if it is in the original units (dollars).
+
+* * *
+We can extract predictted values and residuls from the initial model using the training data to calculate RMSE.
+
+```{r model_rmse}
+predict.ini.train <- exp(predict(ini_model, ames_train_w8))
+resid.ini.train <- na.omit(ames_train_w8$price - predict.ini.train)
+rmse.ini.train <- sqrt(mean(resid.ini.train^2))
+rmse.ini.train
+
+```
+
+The dollar value of within-sample root-mean-squared error is 28720.61 dollar. 
+
+* * *
+
+### Section 2.5 Overfitting 
+
+The process of building a model generally involves starting with an initial model (as you have done above), identifying its shortcomings, and adapting the model accordingly. This process may be repeated several times until the model fits the data reasonably well. However, the model may do well on training data but perform poorly out-of-sample (meaning, on a dataset other than the original training data) because the model is overly-tuned to specifically fit the training data. This is called “overfitting.” To determine whether overfitting is occurring on a model, compare the performance of a model on both in-sample and out-of-sample data sets. To look at performance of your initial model on out-of-sample data, you will use the data set `ames_test`.
+
+```{r loadtest, message = FALSE}
+load("ames_test.Rdata")
+```
+
+Use your model from above to generate predictions for the housing prices in the test data set.  Are the predictions significantly more accurate (compared to the actual sales prices) for the training data than the test data?  Why or why not? Briefly explain how you determined that (what steps or processes did you use)?
+
+* * *
+
+The test data has a new level (Landmrk) on the Neighborhood variable, which is unfortunately filtered so that the initial model can be used to predict test data without modification.
+
+```{r initmodel_test}
+ames_test_w8 <- ames_test %>%
+  mutate(price_log= log(price), area_log=log(area), Lot.Area_log= log(Lot.Area)) %>%
+  filter(Neighborhood != 'Landmrk')
+
+predict.ini.test <- exp(predict(ini_model, ames_test_w8))
+resid.ini.test <- na.omit(ames_test_w8$price - predict.ini.test)
+rmse.ini.test <- sqrt(mean(resid.ini.test^2))
+rmse.ini.test
+```
+
+Curiously, the test data set has lower RMSE 22891.13 dollar than training data set 28720.61 dollar. Which is unusual, and means overfitting is not a big issue with initial model. As a result, extrapolating this initial model to out-of sample data is feasible.
+
+* * *
+
+**Note to the learner:** If in real-life practice this out-of-sample analysis shows evidence that the training data fits your model a lot better than the test data, it is probably a good idea to go back and revise the model (usually by simplifying the model) to reduce this overfitting. For simplicity, we do not ask you to do this on the assignment, however.
+
+## Part 3 Development of a Final Model
+
+Now that you have developed an initial model to use as a baseline, create a final model with *at most* 20 variables to predict housing prices in Ames, IA, selecting from the full array of variables in the dataset and using any of the tools that we introduced in this specialization.  
+
+Carefully document the process that you used to come up with your final model, so that you can answer the questions below.
+
+### Section 3.1 Final Model
+
+Provide the summary table for your model.
+
+* * *
+
+```{r model_playground}
+ames_train_w8$MS.SubClass <- as.factor(ames_train_w8$MS.SubClass)
+
+ames_train_w8 <- ames_train_w8 %>%
+  mutate(number.bath= Full.Bath+ 0.5* Half.Bath + 0.5* (Bsmt.Full.Bath+ 0.5*Bsmt.Half.Bath))
+
+ames_train_w8 %>% 
+  summarise_all(funs(sum(is.na(.))))
+```
+
+For this section, I use stepwise AIC, stepwise BIC as well as BMA, total three methods.
+
+* Based on the Stepwise AIC or BIC the final models are:
+```{r}
+ames_train_w8_step <- ames_train_w8 %>%
+  dplyr::select (price_log, area_log, Lot.Area_log, Neighborhood,  Bldg.Type , Overall.Qual , Overall.Cond , Year.Built , Bsmt.Qual , Bsmt.Cond , Bedroom.AbvGr , Sale.Condition , TotRms.AbvGrd , number.bath , Kitchen.AbvGr , Kitchen.Qual , Garage.Cars ,  Garage.Qual , Garage.Cond , Exter.Qual , Exter.Cond , Heating , Heating.QC , MS.SubClass , MS.Zoning , Garage.Area , Total.Bsmt.SF, X1st.Flr.SF, X2nd.Flr.SF, Fireplaces , Central.Air , Sale.Type , Yr.Sold) %>%
+  na.omit()
+
+```
+
+
+```{r}
+ini_model_2 = lm(price_log ~ area_log + Lot.Area_log + Neighborhood + Bldg.Type + Overall.Qual + Overall.Cond + Year.Built + Bsmt.Qual + Bsmt.Cond + Bedroom.AbvGr + Sale.Condition+ TotRms.AbvGrd + number.bath + Kitchen.AbvGr + Kitchen.Qual+ Garage.Cars +  Garage.Qual + Garage.Cond + Exter.Qual + Exter.Cond + Heating + Heating.QC + MS.SubClass + MS.Zoning + log(Garage.Area + 1) +  log(Total.Bsmt.SF + 1)+ log(X1st.Flr.SF) + log(X2nd.Flr.SF + 1) + Fireplaces + Central.Air + Sale.Type + Yr.Sold , data = ames_train_w8_step)
+
+summary(ini_model_2)
+
+final_model_bic = stepAIC(ini_model_2,data = ames_train_w8_step, direction="backward", trace = "F", k=log(nrow(ames_train_w8_step)))
+
+summary(final_model_bic)
+
+final_model_aic = stepAIC(ini_model_2,data = ames_train_w8_step, direction="backward", trace = "F", k=2)
+
+summary(final_model_aic)
+
+
+```
+
+* Based on the Bayesian Model Averaging method, the final model development is as follows: 
+
+```{r}
+final_model_bma = bas.lm(ini_model_2, data = ames_train_w8, prior = "BIC", modelprior = uniform(), method= "MCMC")
+summary(final_model_bma)
+```
+
+
+```{r}
+final_model_bma = lm(price_log ~ area_log + Lot.Area_log + Neighborhood + Bldg.Type + Overall.Qual + Overall.Cond + Bsmt.Qual + Sale.Condition  + Kitchen.AbvGr + Kitchen.Qual+ Garage.Cars + Garage.Cond +  Exter.Cond + Heating.QC +MS.SubClass + MS.Zoning + log(Garage.Area + 1) +log(X1st.Flr.SF) + Sale.Type, data = ames_train_w8)
+
+summary(final_model_bma)
+```
+
+Compare all three models, Stepwise BIC model has least Adjusted R-squared 0.8871, whereas Stepwise AIC model has over 20 variable despite a very Adjusted R-squared of 0.9129. **So the final model is the model from Bayesian Model Averaging method, and the final model summary table is the last summary table above with 19 variables and Adjusted R-squared of  0.8972.**
+
+* * *
+
+### Section 3.2 Transformation
+
+Did you decide to transform any variables?  Why or why not? Explain in a few sentences.
+
+* * *
+Yes. In the final model, there are four variables that are transformed. area, Lot.Area, X1st.Flr.SF are all natural log transformed, and Garage.Area are transformed as log (Garage.Area+1), to avoid the covariate taking values equal to zero. Of course price is also log transformed.  The reason for natural log transform variables is to make the relationship more linear. An example with Lot.Area and price_log is shown below.
+
+Also MS.SubClass is transformed to categorical variable, because even it's recorded in number, it's in fact the type of dwelling involved in the sale. 
+
+```{r model_assess}
+
+p7 <- ggplot(data = ames_train_w8, aes(x = Lot.Area, y = price_log)) +
+  geom_jitter() +
+  labs(x = "Lot Area of Houses", y= "Price of Houses")
+
+p8 <- ggplot(data = ames_train_w8, aes(x = Lot.Area_log, y = price_log)) +
+  geom_jitter() +
+  labs(x = "Log Lot Area of Houses", y= "Log Price of Houses")
+
+grid.arrange(p7, p8, ncol =2)
+
+
+```
+
+* * *
+
+### Section 3.3 Variable Interaction
+
+Did you decide to include any variable interactions? Why or why not? Explain in a few sentences.
+
+* * *
+Yes, there are many variables about bathroom number in the original data set. So I created a variable *number.bath* in the initial_model_2 before performing Model Selection. The equation is $ number.bath = Full.Bath+ 0.5*Half.Bath + 0.5*(Bsmt.Full.Bath+ 0.5*Bsmt.Half.Bath)$, asssuming half bath has half the functionality of full bath, and bathrooms in basement in general has half the functionality of bathrooms above grade. However, this variable is not selected in the final model resulted from BMA method. 
+
+* * *
+
+### Section 3.4 Variable Selection
+
+What method did you use to select the variables you included? Why did you select the method you used? Explain in a few sentences.
+
+* * *
+As shown in 3.1, I tried stepwise BIC (minimum BIC with a penalty proportional to the log of the sample size for each variable), stepwise AIC (minimum AIC with a constant penalty for each variable) as well as BMA (variables with marginal posterior inclusion probabilities greater than 0.5) methods. I finally selected BMA method to develop the final model, based on the hard constraints of 20 variable and higher Adjusted R squared. 
+Stepwise BIC model has least Adjusted R-squared 0.8871, whereas Stepwise AIC model has over 20 variable despite a very Adjusted R-squared of 0.9129. **So the final model is the model from Bayesian Model Averaging method with 19 variables and Adjusted R-squared of  0.8972.**
+
+* * *
+
+### Section 3.5 Model Testing
+
+How did testing the model on out-of-sample data affect whether or how you changed your model? Explain in a few sentences.
+
+* * *
+* The dollar value of within-sample root-mean-squared error is shown below 26898.51 dollar
+```{r model_testing}
+
+predict.final.train <- exp(predict(final_model_bma, ames_train_w8_step))
+resid.final.train <- na.omit(exp(ames_train_w8_step$price_log) - predict.final.train)
+rmse.final.train <- sqrt(mean(resid.final.train^2))
+rmse.final.train
+
+```
+
+* The dollar value of out-of-sample root-mean-squared error is shown below as 22678.89 dollar
+
+```{r}
+ames_test_w8 <- ames_test_w8 %>%
+  filter(Exter.Cond != 'Po')
+ames_test_w8$MS.SubClass <- as.factor(ames_test_w8$MS.SubClass)
+
+predict.final.test <- exp(predict(final_model_bma, ames_test_w8))
+resid.final.test <- na.omit(ames_test_w8$price - predict.final.test)
+rmse.final.test <- sqrt(mean(resid.final.test^2))
+rmse.final.test
+```
+
+Since the test data set has lower RMSE 22678.89 dollar than training data set 26898.51 dollar, overfitting is not a big issue with final model by BMA. No change is needed.
+
+* * *
+
+## Part 4 Final Model Assessment
+
+### Section 4.1 Final Model Residual
+
+For your final model, create and briefly interpret an informative plot of the residuals.
+
+* * *
+
+```{r}
+ggplot(data = final_model_bma , aes(x = .resid)) +
+  geom_histogram() +
+  xlab("Final Model Residuals")
+
+ggplot(data = final_model_bma, aes(sample = .resid)) +
+  stat_qq()
+
+ggplot(data = final_model_bma, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  xlab("Final Model Fitted values") +
+  ylab("Final Model Residuals")
+```
+
+* There seems to be nearly normal , fairly symmetric residuals, despite very small number of outliers rendering the residual plot left skewed.
+* QQ quantile-quantile also shows a lower tail. Otherwise it can be considered normally distributed.
+* The residuals plot shows a random scatter, which proves linear association.
+* Constant variance of residuals is met, there seems to be no fan shape in residuals plot. But the model does tend to overvalued houses as the residual plots suggested. 
+
+* * *
+
+### Section 4.2 Final Model RMSE
+
+For your final model, calculate and briefly comment on the RMSE.
+
+* * *
+As discussed in Section 3.5, The dollar value of within-sample root-mean-squared error is shown below 26898.51 dollar. It's not terribly large RMSE, which means that the model is a relatively good fit. Also, recall our initial model's RMSE is 28720.61 dollar shown in Section 2.4, larger than the final model. It shows that the final model indeed improved initial model slightly. 
+
+```{r}
+predict.final.train <- exp(predict(final_model_bma, ames_train_w8_step))
+resid.final.train <- na.omit(exp(ames_train_w8_step$price_log) - predict.final.train)
+rmse.final.train <- sqrt(mean(resid.final.train^2))
+rmse.final.train
+```
+
+* * *
+
+### Section 4.3 Final Model Evaluation
+
+What are some strengths and weaknesses of your model?
+* * *
+
+**Strengths**
+
+* Transformation has been applied to compensate the non linearity of the model, and change coded integer variable to correct categorical variable. 
+* It has a lower RMSE on test data set than training data, there is minumum overfitting.
+* Overall good fit with reasonably low RMSE and high adjusted R squared. 
+
+**Weaknesses**
+* I have not been able to fix the error that occurs when a new set of data has new levels in an exisiting variable and the model is unable to predict the price. I have to filter certain new data entry from the data set. 
+* Based on EDA, I was sure year built was an important variable, but somehow it was not selected in the final model. I could have tested more variables like this one after using the BMA. 
+
+* * *
+
+### Section 4.4 Final Model Validation
+
+Testing your final model on a separate, validation data set is a great way to determine how your model will perform in real-life practice. 
+
+You will use the “ames_validation” dataset to do some additional assessment of your final model. Discuss your findings, be sure to mention:
+* What is the RMSE of your final model when applied to the validation data?  
+* How does this value compare to that of the training data and/or testing data?
+* What percentage of the 95% predictive confidence (or credible) intervals contain the true price of the house in the validation data set?  
+* From this result, does your final model properly reflect uncertainty?
+
+```{r loadvalidation, message = FALSE}
+load("ames_validation.Rdata")
+```
+
+* * *
+
+** RMSE for validation data and comparison**
+
+```{r}
+ames_vali_w8 <- ames_validation %>%
+  mutate(price_log= log(price), area_log=log(area), Lot.Area_log= log(Lot.Area)) %>%
+   filter(MS.SubClass  != '150', MS.Zoning != 'A (agr)')
+ 
+ames_vali_w8$MS.SubClass <- as.factor(ames_vali_w8$MS.SubClass)
+
+predict.final.vali <- exp(predict(final_model_bma, ames_vali_w8))
+resid.final.vali <- na.omit(ames_vali_w8$price - predict.final.vali)
+rmse.final.vali <- sqrt(mean(resid.final.vali^2))
+rmse.final.vali
+```
+
+The dollar value of validation root-mean-squared error is 21652.94 dollar. Lower than both training and test data set. This is a great sign for it to perform very well in real life practice. 
+
+** 95% predictive confidence intervals and Uncertainty**
+
+```{r model_validate}
+predict.final.vali.int <- exp(predict(final_model_bma, ames_vali_w8, interval = "prediction", level = 0.95))
+
+coverage.prob.vali <- mean(ames_vali_w8$price > predict.final.vali.int[,"lwr"] &
+                            ames_vali_w8$price < predict.final.vali.int[,"upr"], na.rm=T)
+coverage.prob.vali
+
+```
+
+98% of the 95% predictive confidence (or credible) intervals contain the true price of the house in the validation data set.  It is somewhat larger than 95%, it could mean that some some assumptions regarding uncertainties may not be met, and the interval predicted is a little too conservative. 
+
+* * *
+
+## Part 5 Conclusion
+
+Provide a brief summary of your results, and a brief discussion of what you have learned about the data and your model. 
+
+* * *
+This project is done as a consultant to a real estate investment firm in Ames to analyze data in order to help provide insight into how the firm should invest for highest profits. For this we developed a model that predicts house prices based on house parameters such as house area in sqft, Neighborhood and sale condition, using training data. This model is tested and validated with test set of data and validation set of data from the same population. Overall, the model developed using Bayesian Model Averaging predicts out of sample data price very well and the root mean squared error of test and validation data is lower than the training data. 
+
+I learned that knowing numbers of missing observations in variables is very important because that means it's not very useful to include this variable in the model.  Also transforming variables help develop linear relationship. Finally, RMSE is such a powerful model comparison index for avoiding overfitting. 
+
+
+* * *
