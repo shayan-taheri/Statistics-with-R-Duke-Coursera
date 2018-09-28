@@ -1,0 +1,326 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(GGally)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+According to the Codebook for Movies data set, the data set is comprised of 651 randomly sampled movies produced and released before 2016. 
+
+* Generalizability – Random sampling is used, so the results should be generalizable to all the movies. However there is no information about language or country in the data set, so if the 651 movies are all English language or English dubbed movies, it would be more precise to say that the results should be generalizable to all the English language or English dubbed movies. 
+
+* Causality – Random assignment is not used, so the results can only suggest correlation, not causation between the quantities studied.
+
+
+* * *
+
+## Part 2: Research question
+
+Whether a movie is popular or not is not very well defined in the project's setting, in this study, I define it as: **the larger number of votes a movie gets in IMDb, the more popular it is.** This has inherent flaws, because large number of votes might result in low score. But for a business point of view, bottom line, e.g. box office is the most important thing, and attracting larger amount of people to the theater itself is a business success for a company like Paramount Pictures, so for now we are going to use this definition of popularity. 
+
+My research question is: How the popularity of a movie is related with timing of first release? We usually saw blockbuster movies in theater in holiday seasons or in summer and it would be interesting to find out if there is any basis for that choice from the data set. 
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+**Popularity vs. Year**
+
+We can first look at the overall trend of popularity of a movie released in different years.
+
+```{r}
+year<- movies %>%
+  group_by(thtr_rel_year)%>%
+  summarise(year_mean_votes = mean(imdb_num_votes))
+
+  ggplot(year, aes(x = thtr_rel_year, y = year_mean_votes)) +
+  geom_bar(stat = "identity")+ ggtitle("Popularity of a movie vs year realeased")
+
+```
+
+It looks like movie popularity has been growing in general over the 40 years. This should come as no surprise as rating a movie on internet is a relatively new thing compare to movie industry.
+
+There are two larger means in 1974 and 1997 that caught our attention. So let's take a look the samples from these two years. 
+
+```{r}
+year1974 <- movies %>%
+  select(title, thtr_rel_year, imdb_num_votes) %>%
+  filter(thtr_rel_year==1974)
+year1974 %>%
+  summarise(n_1974 = n(), mean_1974=mean(imdb_num_votes))
+  quantile(year1974$imdb_num_votes)
+```
+
+There are only eight samples from 1974, and we can see that the maximum 749783 votes come from the 100% quantile, which is more than 20 times than the 75% quantile 27399.5 votes. It's likely that the large mean is due to the maximum number here. So we can do a descending order on the votes here to see what is the film that is so sensational. 
+```{r}
+year1974 %>%
+  arrange(desc(imdb_num_votes))
+```
+
+It is The Godfather, Part II, which is one of the most beloved gangster movies in history. 
+
+The same analysis can be done for year 1997. 
+```{r}
+year1997 <- movies %>%
+  select(title, thtr_rel_year, imdb_num_votes) %>%
+  filter(thtr_rel_year==1997)
+
+year1997 %>%
+  summarise(n_1997 = n(), mean_1997=mean(imdb_num_votes))
+  quantile(year1997$imdb_num_votes)
+```
+```{r}
+year1997 %>%
+  arrange(desc(imdb_num_votes))
+```
+
+We can see from the descending order, unlike year 1974's sample that the one Godfather movie increased that year's average movie popularity, the sample of year 1997 has three movies that really made a big impact on the data as well as movie history: Titanic, Good Will Hunting and the Fifth Element.  Year 1997 is a golden year for the movie industry. 
+
+**Popularity vs. Month**
+
+We should also look at the relationship between popularity of a movie and its release month. This is to our particular interest because studio can't really control what year they release a film by too much, but they can shorten or lengthen the production time to control what month they release the film to attract more viewers. 
+
+```{r}
+month<- movies %>%
+  group_by(thtr_rel_month)%>%
+  summarise(month_mean_votes = mean(imdb_num_votes))
+
+  ggplot(month, aes(x = thtr_rel_month, y = month_mean_votes)) +
+  geom_bar(stat = "identity")+ 
+    ggtitle("Popularity of a movie vs month realeased")
+
+```
+
+The bar chart confirmed that movie released in summer (June and July), and holiday seasons (November and December), are more popular than that released in other months. 
+
+There is a somewhat unexpected peak in March in the above chart. We can also plot the data but use box plot to take a look at the potential outliers, since later on we need to model use the data set. 
+
+```{r}
+
+  ggplot(movies, aes(x = factor(thtr_rel_month), y = imdb_num_votes)) +
+  geom_boxplot()+
+  ggtitle("Popularity of a movie vs month realeased")
+
+```
+
+It can be seen that all the votes are right skewed and there are some exceptionally popular movies in December, March, October and September. So it would be more sensible to plot with the median to better capture the relationship between popularity of a movie and its release month.
+
+```{r}
+month<- movies %>%
+  group_by(thtr_rel_month)%>%
+  summarise(month_med_votes = median(imdb_num_votes))
+
+  ggplot(month, aes(x = thtr_rel_month, y = month_med_votes)) +
+  geom_bar(stat = "identity")+ 
+    ggtitle("Popularity of a movie vs month realeased with median")
+
+```
+
+The bar chart is indeed more reasonable and we can see August being another good release month and the peak in March disappeared, as we expected. 
+
+In conclusion, movie popularity increased with release year, and the best month to release a movie is summer time from June to August as well as holiday season November and December. 
+
+* * *
+
+## Part 4: Modeling
+
+We would like to explore what makes a movie receive high IMDb rating. 
+
+**Specify Variables and Excluding Variables**
+
+We are going to include the following variables in the full model: genre, runtime, mpaa_rating, thtr_rel_year, critics_score from Rotten tomato, best_pic_nom, best_actor_win, best_actress_win, best_dir_win, top200_box. 
+
+The reason I choose to use critics_score over audience score is because these two variables are clearly collinear, as shown below. 
+
+Also numerical ratings are more accurate compared to categorical ratings such as Rotten vs. Fresh and Spilled vs. Upright. 
+
+```{r}
+ggpairs(movies, columns = c("audience_score", "critics_score"))
+```
+
+We did not model studio company, or director name or 5 top actors and actress for very obvious reason, they will make the model very complicated.
+
+We also choose a movie's Oscar nomination over Oscar win because it gives us larger sample size than if we choose Oscar win, and that Oscar nomination is already a sign of great quality. Plus they are clearly related variables too. 
+
+The reason for choosing genre over title type is because genre is more detailed than title type, and we can build a more accurate model with it.
+
+Some less relevant variables are also excluded from the full model such as title of the film, month and date of the release, year, month and date DVD release, and urls. 
+
+
+**Model selection method**
+
+Backward-selection with p value method is used. The idea is to start with the full model and eliminate one variable with the highest p-value at a time, refit the model, repeat until all remaining variables are significant, then the ideal model is reached. It's more convenient to carry out. 
+
+
+**Movie Popularity Model**
+
+First we make a full model without rows of NA values. 
+```{r}
+movies_comp <- movies[-c(which(!complete.cases(movies))),,drop=F]
+```
+
+
+```{r}
+m_full <- lm(imdb_rating ~ genre + runtime + mpaa_rating + thtr_rel_year + critics_score + best_pic_nom + best_actor_win + best_actress_win + best_dir_win + top200_box, data = movies_comp)
+summary(m_full)
+```
+
+We can drop the best_actress_win first, as it has highest p value.
+```{r}
+m_full_1 <- lm(imdb_rating ~ genre + runtime + mpaa_rating + thtr_rel_year + critics_score + best_pic_nom + best_actor_win + best_dir_win + top200_box, data = movies_comp)
+summary(m_full_1)
+
+```
+
+The Adjusted R-squared increased a little. Then we can drop best_actor_win as it has the largest p value now. 
+
+```{r}
+m_full_2 <- lm(imdb_rating ~ genre + runtime + mpaa_rating + thtr_rel_year + critics_score + best_pic_nom  + best_dir_win + top200_box, data = movies_comp)
+summary(m_full_2)
+
+```
+
+Next we can drop best_dir_win.
+
+```{r}
+m_full_3 <- lm(imdb_rating ~ genre + runtime + mpaa_rating + thtr_rel_year + critics_score + best_pic_nom   + top200_box, data = movies_comp)
+summary(m_full_3)
+
+```
+
+Next we can drop top200_box.
+```{r}
+m_full_4 <- lm(imdb_rating ~ genre + runtime + mpaa_rating + thtr_rel_year + critics_score + best_pic_nom, data = movies_comp)
+summary(m_full_4)
+
+```
+
+Then we drop the theater release year variable. 
+```{r}
+m_full_5 <-lm(imdb_rating ~ genre + runtime + mpaa_rating + critics_score + best_pic_nom, data = movies_comp)
+summary(m_full_5)
+
+```
+
+
+
+Next we can drop mpaa_rating, as the smallest p-value is 0.10, larger than 0.05. 
+
+```{r}
+m_full_6 <-lm(imdb_rating ~ genre + runtime + critics_score + best_pic_nom, data = movies_comp)
+summary(m_full_6)
+```
+
+The Adjusted R-squared in fact decreased slightly. But now all the variables had p value larger than 0.05. In the case of genre, because some of the genre is very significant to the rating of the film such as Documentary. Our final model included genre + runtime + critics_score + best_pic_nom. The final adjusted R-squared is 0.6226.
+
+
+**Model diagnostics**
+
+* linear relationship between each (numerical) explanatory variable and the response variable.
+
+It is checked by using scatterplots of y vs. each numerical x, and residuals plots of residuals vs. each x. We have runtime,  critics_score as the two numerical variables.
+
+```{r}
+plot(m_full_6$residuals ~ movies_comp$runtime)
+plot(m_full_6$residuals ~ movies_comp$critics_score)
+
+```
+
+They are in fact random scatter around 0, proving that both runtime and critics score have linear relationship with the response variable, the IMDb rating.
+
+* nearly normal residuals with mean 0
+
+This is checked using a normal probability plot and histogram of residuals.
+```{r}
+hist(m_full_6$residuals)
+qqnorm(m_full_6$residuals)
+qqline(m_full_6$residuals)
+```
+
+The residual distribution is slightly left skewed, but near normal is fairly satisfied. 
+
+
+* constant variability of residuals
+
+This is checked using residuals plots of residuals vs. y^. 
+
+```{r}
+plot(m_full_6$residuals ~ m_full_6$fitted)
+plot(abs(m_full_6$residuals) ~m_full_6$fitted)
+```
+
+The variability around low score is indeed larger, but the condition seems to be met.
+
+* independence of residuals (and hence observations)
+
+The observations are independent because it's random sampling.
+
+
+**Interpretation of model coefficients**
+
+In conclusion, the intercept 4.198 from our final model m_full_6 means that, if a movie is a very very short Action& Adventure movie without Oscar nomination, and critics on Rotten tomato give it a 0. the rating of it would be around 4.2 points on IMDb. 
+
+All else holds the same, with each additional minute of run time, the IMDb rating is expected to increase by 0.007.  All else holds the same, with each additional points of critics score increase, the IMDb rating is expected to increase by 0.025. With all else holds the same, if the picture is nominated for Oscar best picture, the IMDb rating is expected to increase by 0.318 points. 
+
+For the Genre variable, if this is a Documentary film instead of an Adventure film, all else holds the same, the IMDb rating is expected to increase by 0.558 points. Or, if it's an House & International film instead of an Adventure film, all else holds the same, the IMDb rating is expected to increase by 0.528 points.
+
+
+* * *
+
+## Part 5: Prediction
+
+Manchester by the Sea is my favorite movie last year, and we can predict the IMDb rating using the model. The Rotten Tomato and IMDb pages are:
+https://www.rottentomatoes.com/m/Manchester_by_the_sea/
+
+http://www.IMDb.com/title/tt4034228/awards?ref_=tt_awd
+
+```{r}
+new_movie <- data.frame(genre = "Drama", runtime = 137, critics_score = 95, best_pic_nom= "yes")
+predict(m_full_6, new_movie,interval = "prediction", level = 0.95)
+```
+
+The model predicts the rating of Manchester by the Sea to have 7.98 rating in IMDb, which is very close to the actual rating for this movie 7.9. The model also predicts, with 95% confidence, that a Oscar best picture nominated Drama with critics_score of 95, runtime of 137 minutes is expected to have an IMDb rating between 6.66 to 9.31.
+
+* * *
+
+## Part 6: Conclusion
+For the EDA Part, we first defined popularity and answered the research question: How the popularity of a movie is related with timing of first release. It is expected the month of release play a difference of that.  We also found out that movie industry has been doing great for the past 40 years as more and more votes are seen in IMDb. 
+
+For the Modeling and Prediction part, we build a model to predict a movie's IMDb rating using the variables from the data set. There are some interesting observations related to the model: 
+
+* First, although we saw more and more people see movies over the 40 years, we removed theater release year from the IMDb rating model due to large p-value. That means that that movies in general get more popularity, but not significant quality increase when IMDb users is concerned. 
+
+* Different genres get quite different average scores. Documentary movies' average score is higher than the Science Fiction & Fantasy movies average score by more than 1. 
+
+* It is somewhat unexpected that runtime has such significant relationship with the rating on IMDb. 
+
+* It is expected that Critics, Academy Award committee and regular IMDb viewers have generally the same taste for good movies. 
+
+One of the shortcomings is that the sample size is not very large, and a larger sample may help us build a more accurate model.
+
+
